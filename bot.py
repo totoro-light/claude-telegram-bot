@@ -7,6 +7,8 @@ import asyncio
 import json
 import logging
 import os
+import signal
+import subprocess
 from pathlib import Path
 
 from telegram import Update
@@ -105,6 +107,8 @@ async def keep_typing(context: ContextTypes.DEFAULT_TYPE, chat_id: int, stop: as
 
 # --- Handlers ---
 
+RESTART_SCRIPT = Path(__file__).parent / "restart-bot.sh"
+
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not allowed(update): return
     await update.message.reply_text(
@@ -112,6 +116,8 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Send any message to interact with Claude Code\\.\n\n"
         "Commands:\n"
         "/new — Start a fresh conversation\n"
+        "/restart — Restart this bot service\n"
+        "/status — Show repos, branches and services\n"
         "/session — Show current session ID\n"
         "/dir — Show working directory\n"
         "/help — Show this help",
@@ -122,6 +128,19 @@ async def cmd_new(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not allowed(update): return
     del_session(update.effective_chat.id)
     await update.message.reply_text("Started a new conversation.")
+
+async def cmd_restart(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not allowed(update): return
+    await update.message.reply_text("Restarting bot service in 3 seconds...")
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "bash", str(RESTART_SCRIPT),
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        await proc.wait()
+    except Exception as e:
+        await update.message.reply_text(f"Failed to schedule restart: {e}")
 
 async def cmd_session(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not allowed(update): return
@@ -134,6 +153,102 @@ async def cmd_session(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_dir(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not allowed(update): return
     await update.message.reply_text(f"Working directory: `{WORK_DIR}`", parse_mode="Markdown")
+
+async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not allowed(update): return
+    lines = [f"*Status* — `{WORK_DIR}`\n"]
+
+    # Repos
+    work = Path(WORK_DIR)
+    repos = sorted([d for d in work.iterdir() if d.is_dir() and (d / ".git").exists()])
+    if repos:
+        lines.append("*Repos:*")
+        for repo in repos:
+            try:
+                branch = subprocess.check_output(
+                    ["git", "branch", "--show-current"], cwd=repo, stderr=subprocess.DEVNULL
+                ).decode().strip() or "HEAD detached"
+                dirty = subprocess.check_output(
+                    ["git", "status", "--short"], cwd=repo, stderr=subprocess.DEVNULL
+                ).decode().strip()
+                flag = " \\*" if dirty else ""
+                lines.append(f"  `{repo.name}` → {branch}{flag}")
+            except Exception:
+                lines.append(f"  `{repo.name}` → (error)")
+    else:
+        lines.append("No git repos found.")
+
+    # Claude Code context usage
+    try:
+        projects_dir = Path.home() / ".claude" / "projects"
+        MODEL_LIMIT = 200_000
+        latest_usage = None
+        latest_mtime = 0
+        for project_dir in projects_dir.iterdir():
+            if not project_dir.is_dir():
+                continue
+            for session_file in project_dir.glob("*.jsonl"):
+                mtime = session_file.stat().st_mtime
+                if mtime < latest_mtime:
+                    continue
+                # find last assistant usage in this file
+                last = None
+                for line in session_file.read_text().splitlines():
+                    if not line.strip():
+                        continue
+                    try:
+                        e = json.loads(line)
+                        if e.get("type") == "assistant":
+                            u = e.get("message", {}).get("usage")
+                            if u:
+                                last = u
+                    except Exception:
+                        pass
+                if last:
+                    latest_usage = last
+                    latest_mtime = mtime
+        if latest_usage:
+            total = (
+                latest_usage.get("input_tokens", 0)
+                + latest_usage.get("cache_read_input_tokens", 0)
+                + latest_usage.get("cache_creation_input_tokens", 0)
+                + latest_usage.get("output_tokens", 0)
+            )
+            used_pct = total / MODEL_LIMIT * 100
+            remaining_pct = 100 - used_pct
+            BAR_WIDTH = 20
+            filled = used_pct / 100 * BAR_WIDTH
+            full_blocks = int(filled)
+            half = "▌" if (filled - full_blocks) >= 0.5 else ""
+            empty = BAR_WIDTH - full_blocks - len(half)
+            bar = "█" * full_blocks + half + "░" * empty
+            lines.append(f"\n*Claude Context:*")
+            lines.append(f"  `{bar}` {used_pct:.1f}% used")
+            lines.append(f"  {total:,} / {MODEL_LIMIT:,} tokens ({remaining_pct:.1f}% remaining)")
+    except Exception:
+        pass
+
+    # Services
+    try:
+        svc_out = subprocess.check_output(
+            ["systemctl", "list-units", "--state=running", "--type=service",
+             "--no-pager", "--no-legend"],
+            stderr=subprocess.DEVNULL
+        ).decode().strip()
+        project_svcs = [
+            l.split()[0] for l in svc_out.splitlines()
+            if not any(s in l for s in ["system", "snap", "apt", "dbus", "network",
+                                         "cron", "ssh", "multipathd", "udev", "getty",
+                                         "accounts", "polkit", "rsyslog", "unattended"])
+        ]
+        if project_svcs:
+            lines.append("\n*Services:*")
+            for s in project_svcs:
+                lines.append(f"  `{s}` running")
+    except Exception:
+        pass
+
+    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not allowed(update): return
@@ -181,12 +296,14 @@ def main():
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("help", cmd_start))
     app.add_handler(CommandHandler("new", cmd_new))
+    app.add_handler(CommandHandler("restart", cmd_restart))
+    app.add_handler(CommandHandler("status", cmd_status))
     app.add_handler(CommandHandler("session", cmd_session))
     app.add_handler(CommandHandler("dir", cmd_dir))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     logger.info("Starting bot (work_dir=%s, skip_permissions=%s)", WORK_DIR, SKIP_PERMISSIONS)
-    app.run_polling(drop_pending_updates=True)
+    app.run_polling(drop_pending_updates=True, stop_signals=(signal.SIGTERM, signal.SIGINT))
 
 
 if __name__ == "__main__":

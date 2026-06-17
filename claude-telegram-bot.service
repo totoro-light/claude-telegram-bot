@@ -2,6 +2,7 @@
 Description=Claude Code Telegram Bot
 After=network-online.target
 Wants=network-online.target
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
@@ -11,6 +12,8 @@ EnvironmentFile=/home/ubuntu/w/totoro-light/claude-telegram-bot/.env
 ExecStart=/usr/bin/python3 /home/ubuntu/w/totoro-light/claude-telegram-bot/bot.py
 Restart=always
 RestartSec=5
+KillMode=control-group
+TimeoutStopSec=15
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=claude-telegram-bot
