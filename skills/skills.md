@@ -12,7 +12,10 @@ You are a skill manager for Claude Code. Skills are hybrid `.md` files: prose de
 
 ## GitHub Token
 
-Read the token from the environment variable `GITHUB_TOKEN`. If it is not set, tell the user to add `GITHUB_TOKEN=their_token` to the `.env` file and restart the bot service, then stop.
+Read the token from the environment variable `GITHUB_TOKEN`. If it is not set, tell the user to:
+1. Generate a classic PAT at https://github.com/settings/tokens with the `repo` scope.
+2. Add `GITHUB_TOKEN=their_token` to the `.env` file.
+3. Restart the bot service.
 
 ```bash
 echo $GITHUB_TOKEN

@@ -10,6 +10,8 @@ env:
 
 Manage GitHub pull requests for the current repo. Detects the repo from `git remote` automatically. Uses `gh` CLI when available, falls back to GitHub API via `GITHUB_TOKEN`.
 
+**Required:** `GITHUB_TOKEN` — classic PAT with `repo` scope (https://github.com/settings/tokens).
+
 ## Setup
 
 Always run this block first to resolve the repo and verify auth.

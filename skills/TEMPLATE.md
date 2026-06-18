@@ -5,6 +5,9 @@ version: 1.0.0
 author: your-github-username
 dependencies: []
 env: []
+# env example — list vars this skill requires:
+# env:
+#   - GITHUB_TOKEN   # classic PAT, scope: repo (https://github.com/settings/tokens)
 ---
 
 Describe what this skill does and when to use it. This prose is for humans and Claude to read.
