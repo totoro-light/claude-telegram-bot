@@ -254,7 +254,19 @@ async def _invoke_claude(update: Update, context: ContextTypes.DEFAULT_TYPE, tex
 async def cmd_i_feat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not allowed(update): return
     args = " ".join(context.args) if context.args else ""
-    await _invoke_claude(update, context, f"/i-feat {args}".strip())
+    if not args:
+        await update.message.reply_text(
+            "Usage: `/i_feat <repo> [branch:<name>] <description>`\n\nExample:\n`/i_feat my-app add user authentication`",
+            parse_mode="Markdown",
+        )
+        return
+    skill_path = Path.home() / ".claude" / "skills" / "i-feat.md"
+    if skill_path.exists():
+        skill_content = skill_path.read_text()
+        prompt = f"{skill_content}\n\n---\n\nThe user has invoked this skill with: /i-feat {args}"
+    else:
+        prompt = f"Help the user plan and implement a new feature. Args: {args}"
+    await _invoke_claude(update, context, prompt)
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
