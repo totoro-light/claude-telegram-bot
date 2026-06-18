@@ -1,6 +1,7 @@
 {
   "registry": "totoro-light/claude-telegram-bot",
   "skills": {
-    "github-pr": "1.0.0"
+    "github-pr": "1.0.0",
+    "i-feat": "1.0.0"
   }
 }

@@ -32,6 +32,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/status — Show repos, branches and services\n"
         "/session — Show current session ID\n"
         "/dir — Show working directory\n"
+        "/i\\_feat `<repo> [branch:<name>] <description>` — Plan and implement a feature interactively\n"
         "/help — Show this help",
         parse_mode="MarkdownV2",
     )
@@ -218,11 +219,8 @@ def _append_services(lines: list) -> None:
         pass
 
 
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not allowed(update): return
-
+async def _invoke_claude(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str):
     chat_id = update.effective_chat.id
-    text = update.message.text
 
     stop = asyncio.Event()
     typing_task = asyncio.create_task(claude.keep_typing(context, chat_id, stop))
@@ -251,3 +249,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     finally:
         stop.set()
         typing_task.cancel()
+
+
+async def cmd_i_feat(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not allowed(update): return
+    args = " ".join(context.args) if context.args else ""
+    await _invoke_claude(update, context, f"/i-feat {args}".strip())
+
+
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not allowed(update): return
+    await _invoke_claude(update, context, update.message.text)
