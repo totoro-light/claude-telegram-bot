@@ -25,6 +25,7 @@ def main():
     app.add_handler(CommandHandler("status",  handlers.cmd_status))
     app.add_handler(CommandHandler("session", handlers.cmd_session))
     app.add_handler(CommandHandler("dir",     handlers.cmd_dir))
+    app.add_handler(CommandHandler("skills",  handlers.cmd_skills))
     app.add_handler(CommandHandler("i_feat",  handlers.cmd_i_feat))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handlers.handle_message))
 

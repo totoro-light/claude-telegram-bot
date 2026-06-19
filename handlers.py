@@ -32,6 +32,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/status — Show repos, branches and services\n"
         "/session — Show current session ID\n"
         "/dir — Show working directory\n"
+        "/skills — List installed skills; `/skills list` to browse registry\n"
         "/i\\_feat `<repo> [branch:<name>] <description>` — Plan and implement a feature interactively\n"
         "/help — Show this help",
         parse_mode="MarkdownV2",
@@ -249,6 +250,46 @@ async def _invoke_claude(update: Update, context: ContextTypes.DEFAULT_TYPE, tex
     finally:
         stop.set()
         typing_task.cancel()
+
+
+async def cmd_skills(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not allowed(update): return
+    args = " ".join(context.args) if context.args else ""
+
+    if not args:
+        lines = ["*Installed Skills:*\n"]
+        skills_dir = Path.home() / ".claude" / "skills"
+        if not skills_dir.exists() or not list(skills_dir.glob("*.md")):
+            lines.append("No skills installed yet.")
+            lines.append("\nUse `/skills list` to see available skills in the registry.")
+            lines.append("Use `/skills install <name>` to install one.")
+        else:
+            for path in sorted(skills_dir.glob("*.md")):
+                try:
+                    meta = _parse_frontmatter(path.read_text())
+                    name = meta.get("name", path.stem)
+                    desc = meta.get("description", "")
+                    version = meta.get("version", "")
+                    required_env = meta.get("env", [])
+                    missing = [e for e in required_env if not os.environ.get(e)]
+                    if missing:
+                        status = f"⚠ missing env: {', '.join(missing)}"
+                    else:
+                        status = f"v{version}" if version else "✓"
+                    lines.append(f"`/{name}` — {desc}  _{status}_")
+                except Exception:
+                    lines.append(f"`/{path.stem}` — (unreadable)")
+            lines.append("\n`/skills list` — browse registry  |  `/skills install <name>` — install")
+        await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+        return
+
+    skill_path = Path.home() / ".claude" / "skills" / "skills.md"
+    if skill_path.exists():
+        skill_content = skill_path.read_text()
+        prompt = f"{skill_content}\n\n---\n\nThe user has invoked this skill with: /skills {args}"
+    else:
+        prompt = f"Manage Claude Code skills. The user ran: /skills {args}"
+    await _invoke_claude(update, context, prompt)
 
 
 async def cmd_i_feat(update: Update, context: ContextTypes.DEFAULT_TYPE):
